@@ -1,13 +1,15 @@
-const fs = require('fs');
-const sdk = require('medium-sdk');
-const md = require('meta-marked');
+import fs from 'fs';
+import sdk from 'medium-sdk';
+import md from 'meta-marked';
+import {getLatestCommitDiff, getNewPostsPath} from "./utils";
 
 const {
   INPUT_APP_ID,
   INPUT_APP_SECRET,
   INPUT_ACCESS_TOKEN,
 
-  INPUT_MARKDOWN_FILE,
+  INPUT_POST_FILE_REG,
+  INPUT_EXCLUDE_FILE_REG,
   INPUT_BASE_URL,
   INPUT_POST_STATUS = sdk.PostPublishStatus.DRAFT,
   INPUT_POST_LICENSE = sdk.PostLicense.ALL_RIGHTS_RESERVED,
@@ -66,14 +68,21 @@ const replaceLocalLinks = (content) => {
 
 (async () => {
   try {
-    const data = await getFileContents(INPUT_MARKDOWN_FILE);
     const { id } = await getUser();
-    const { meta, markdown } = md(replaceLocalLinks(data));
-    const { title, tags = [], slug } = meta || {};
-    const postUrl = `${INPUT_BASE_URL}/posts/${slug}`;
-    const post = await createPost(id, postUrl, title, tags, markdown);
-    console.log(`::set-output name=id::${post.id}`);
-    console.log(`::set-output name=url::${post.url}`);
+    const diff = await getLatestCommitDiff();
+
+    const newPostsPath = getNewPostsPath(diff, INPUT_POST_FILE_REG).filter((path) => new RegExp(INPUT_EXCLUDE_FILE_REG).test(path));
+
+    for (const path of newPostsPath) {
+      const data = await getFileContents(path);
+      const { meta, markdown } = md(replaceLocalLinks(data));
+      const { title, tags = [], slug } = meta || {};
+      const postUrl = `${INPUT_BASE_URL}/posts/${slug}`;
+      const post = await createPost(id, postUrl, title, tags, markdown);
+      console.log(`::set-output name=id::${post.id}`);
+      console.log(`::set-output name=url::${post.url}`);
+    }
+
     process.exit(0);
   } catch (err) {
     console.log(`::error ::${err.message}`);
